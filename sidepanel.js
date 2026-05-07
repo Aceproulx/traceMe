@@ -15,6 +15,7 @@ const refreshBtn = document.getElementById('refresh-btn');
 const tracePanel = document.getElementById('trace-panel');
 const traceList = document.getElementById('trace-list');
 const traceTarget = document.getElementById('trace-target');
+const liveValueEl = document.getElementById('live-value');
 const closeTraceBtn = document.getElementById('close-trace');
 
 // Initialize
@@ -316,7 +317,11 @@ function showTraceResults(word, def, refs) {
         const li = document.createElement('li');
         li.className = 'trace-item';
         li.innerHTML = `<strong>Definition:</strong> Line ${defLine}`;
-        li.onclick = () => goToLine(defLine);
+        li.onclick = (e) => {
+            document.querySelectorAll('.trace-item.active').forEach(el => el.classList.remove('active'));
+            e.currentTarget.classList.add('visited', 'active');
+            goToLine(defLine);
+        };
         traceList.appendChild(li);
     }
 
@@ -331,7 +336,11 @@ function showTraceResults(word, def, refs) {
         const li = document.createElement('li');
         li.className = 'trace-item';
         li.textContent = `Reference: Line ${line}`;
-        li.onclick = () => goToLine(line);
+        li.onclick = (e) => {
+            document.querySelectorAll('.trace-item.active').forEach(el => el.classList.remove('active'));
+            e.currentTarget.classList.add('visited', 'active');
+            goToLine(line);
+        };
         traceList.appendChild(li);
     });
 
@@ -340,6 +349,9 @@ function showTraceResults(word, def, refs) {
     
     // Highlight all instances of this word in the viewer
     highlightTracedWord(word);
+
+    // Get live value from page
+    updateLiveValue(word);
 
     // Auto-scroll to definition if it exists
     if (defLine) {
@@ -359,6 +371,51 @@ function highlightTracedWord(word) {
             el.classList.add('traced-variable-highlight');
         }
     });
+}
+
+async function updateLiveValue(word) {
+    liveValueEl.textContent = 'Fetching...';
+    liveValueEl.title = '';
+
+    try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tab || !tab.id) {
+            liveValueEl.textContent = 'N/A';
+            return;
+        }
+
+        chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            world: 'MAIN',
+            func: (varName) => {
+                try {
+                    let val = window[varName];
+                    if (val === undefined) {
+                        try { val = eval(varName); } catch(e) {}
+                    }
+                    if (val === undefined) return 'undefined';
+                    if (val === null) return 'null';
+                    if (typeof val === 'function') return '[Function]';
+                    if (typeof val === 'object') {
+                        try { return JSON.stringify(val).substring(0, 100); }
+                        catch(e) { return '[Object]'; }
+                    }
+                    return String(val);
+                } catch (e) { return 'N/A'; }
+            },
+            args: [word]
+        }, (results) => {
+            if (chrome.runtime.lastError || !results || !results[0]) {
+                liveValueEl.textContent = 'N/A';
+                return;
+            }
+            const val = results[0].result;
+            liveValueEl.textContent = val;
+            liveValueEl.title = val;
+        });
+    } catch (err) {
+        liveValueEl.textContent = 'N/A';
+    }
 }
 
 function getLineNumber(offset) {

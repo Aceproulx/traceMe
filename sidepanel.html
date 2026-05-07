@@ -51,9 +51,13 @@
         </section>
 
         <section class="trace-panel hidden" id="trace-panel">
-            <div class="panel-header">
-                <h2>Trace Results: <span id="trace-target"></span></h2>
-                <button id="close-trace" class="close-btn">&times;</button>
+            <div class="trace-header">
+                <h3>Trace Results: <span id="trace-target">...</span></h3>
+                <div class="trace-value-container">
+                    <span class="value-label">Live Value:</span>
+                    <span id="live-value" class="value-text">N/A</span>
+                </div>
+                <button class="close-btn" id="close-trace">&times;</button>
             </div>
             <ul id="trace-list"></ul>
         </section>
