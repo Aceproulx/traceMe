@@ -1,0 +1,300 @@
+const appContainer = document.querySelector('.app-container');
+let currentScripts = [];
+let currentCode = '';
+let currentUrl = '';
+let ast = null;
+
+const sinkRegexInput = document.getElementById('sink-regex');
+const scriptSelector = document.getElementById('script-selector');
+const sinkList = document.getElementById('sink-list');
+const sinkCountBadge = document.getElementById('sink-count');
+const codeViewer = document.getElementById('code-viewer');
+const currentScriptName = document.getElementById('current-script-name');
+const refreshBtn = document.getElementById('refresh-btn');
+const beautifyBtn = document.getElementById('beautify-btn');
+const tracePanel = document.getElementById('trace-panel');
+const traceList = document.getElementById('trace-list');
+const traceTarget = document.getElementById('trace-target');
+const closeTraceBtn = document.getElementById('close-trace');
+
+// Initialize
+async function init() {
+    refreshScripts();
+}
+
+// Listen for tab updates to auto-refresh
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    if (changeInfo.status === 'complete' && tab.active) {
+        refreshScripts();
+    }
+});
+
+// Listen for tab activation (switching tabs)
+chrome.tabs.onActivated.addListener(() => {
+    refreshScripts();
+});
+
+refreshBtn.addEventListener('click', refreshScripts);
+
+async function refreshScripts(retryCount = 0) {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab || !tab.id || tab.url.startsWith('chrome://')) {
+        updateScriptSelector();
+        return;
+    }
+
+    chrome.tabs.sendMessage(tab.id, { type: 'GET_SCRIPTS' }, (response) => {
+        if (chrome.runtime.lastError) {
+            // Content script might not be ready yet, retry
+            if (retryCount < 5) {
+                console.log('Content script not ready, retrying...', retryCount);
+                setTimeout(() => refreshScripts(retryCount + 1), 500);
+            } else {
+                console.error('Failed to connect to content script after retries');
+                updateScriptSelector();
+            }
+            return;
+        }
+        if (response) {
+            currentUrl = response.url;
+            currentScripts = response.scripts;
+            updateScriptSelector();
+        }
+    });
+}
+
+function updateScriptSelector() {
+    scriptSelector.innerHTML = '<option value="">-- Select a Script --</option>';
+    currentScripts.forEach(script => {
+        const option = document.createElement('option');
+        option.value = script.id;
+        option.textContent = script.url.length > 50 ? '...' + script.url.slice(-47) : script.url;
+        scriptSelector.appendChild(option);
+    });
+}
+
+scriptSelector.addEventListener('change', async (e) => {
+    const scriptId = e.target.value;
+    if (!scriptId) return;
+
+    const script = currentScripts.find(s => s.id === scriptId);
+    if (!script) return;
+
+    if (script.type === 'external') {
+        currentScriptName.textContent = 'Fetching...';
+        chrome.runtime.sendMessage({ type: 'FETCH_EXTERNAL_SCRIPT', url: script.url }, (response) => {
+            if (response.error) {
+                currentScriptName.textContent = 'Error fetching script';
+                codeViewer.textContent = response.error;
+            } else {
+                displayCode(response.content, script.url);
+            }
+        });
+    } else {
+        displayCode(script.content, 'Inline Script');
+    }
+});
+
+beautifyBtn.addEventListener('click', () => {
+    if (!currentCode) return;
+    const beautified = js_beautify(currentCode, { 
+        indent_size: 2,
+        space_in_empty_paren: true,
+        preserve_newlines: true
+    });
+    displayCode(beautified, currentScriptName.textContent + ' (Formatted)');
+});
+
+function displayCode(code, name) {
+    currentCode = code;
+    currentScriptName.textContent = name;
+    
+    // Parse AST
+    try {
+        ast = acorn.parse(code, { ecmaVersion: 'latest', sourceType: 'module' });
+    } catch (e) {
+        console.warn('Acorn parse failed, trying script mode', e);
+        try {
+            ast = acorn.parse(code, { ecmaVersion: 'latest', sourceType: 'script' });
+        } catch (e2) {
+            console.error('Final Acorn parse failure', e2);
+            ast = null;
+        }
+    }
+
+    renderCodeWithHighlights(code);
+    findSinks(code);
+}
+
+function renderCodeWithHighlights(code) {
+    codeViewer.innerHTML = '';
+    const lines = code.split('\n');
+    const regex = new RegExp(sinkRegexInput.value, 'g');
+
+    lines.forEach((line, index) => {
+        const lineDiv = document.createElement('div');
+        lineDiv.className = 'code-line';
+        lineDiv.id = `line-${index + 1}`;
+
+        // Simple syntax highlighting for sinks
+        let highlightedLine = line.replace(/[a-zA-Z0-9_$]+/g, (match) => {
+            if (match.match(regex)) {
+                return `<span class="highlight-sink">${match}</span>`;
+            }
+            return `<span class="variable" data-word="${match}">${match}</span>`;
+        });
+
+        lineDiv.innerHTML = highlightedLine;
+        codeViewer.appendChild(lineDiv);
+    });
+
+    // Add click events to variables
+    document.querySelectorAll('.variable').forEach(el => {
+        el.addEventListener('click', (e) => {
+            handleVariableClick(e.target.dataset.word, e.target);
+        });
+    });
+}
+
+function findSinks(code) {
+    const regex = new RegExp(sinkRegexInput.value, 'g');
+    const lines = code.split('\n');
+    const sinks = [];
+
+    lines.forEach((line, index) => {
+        let match;
+        while ((match = regex.exec(line)) !== null) {
+            sinks.push({
+                func: match[0],
+                line: index + 1,
+                content: line.trim().substring(0, 50) + '...'
+            });
+        }
+    });
+
+    renderSinks(sinks);
+}
+
+function renderSinks(sinks) {
+    sinkList.innerHTML = '';
+    sinkCountBadge.textContent = sinks.length;
+
+    sinks.forEach(sink => {
+        const li = document.createElement('li');
+        li.className = 'sink-item';
+        li.innerHTML = `
+            <span class="sink-func">${sink.func}</span>
+            <span class="sink-line">Line ${sink.line}: ${escapeHtml(sink.content)}</span>
+        `;
+        li.onclick = () => {
+            const lineEl = document.getElementById(`line-${sink.line}`);
+            if (lineEl) {
+                lineEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                lineEl.style.backgroundColor = 'rgba(255, 46, 99, 0.4)';
+                setTimeout(() => {
+                    lineEl.style.backgroundColor = '';
+                }, 2000);
+            }
+        };
+        sinkList.appendChild(li);
+    });
+}
+
+function handleVariableClick(word, element) {
+    if (!ast) return;
+    
+    // Find all occurrences of this word in the AST
+    const refs = [];
+    let definition = null;
+
+    acorn.walk.simple(ast, {
+        Identifier(node) {
+            if (node.name === word) {
+                refs.push(node);
+            }
+        },
+        VariableDeclarator(node) {
+            if (node.id.type === 'Identifier' && node.id.name === word) {
+                definition = node.id;
+            }
+        },
+        FunctionDeclaration(node) {
+            if (node.id && node.id.name === word) {
+                definition = node.id;
+            }
+        },
+        ClassDeclaration(node) {
+            if (node.id && node.id.name === word) {
+                definition = node.id;
+            }
+        }
+    });
+
+    showTraceResults(word, definition, refs);
+}
+
+function showTraceResults(word, def, refs) {
+    traceTarget.textContent = word;
+    traceList.innerHTML = '';
+    
+    let defLine = null;
+    if (def) {
+        defLine = getLineNumber(def.start);
+        const li = document.createElement('li');
+        li.className = 'trace-item';
+        li.innerHTML = `<strong>Definition:</strong> Line ${defLine}`;
+        li.onclick = () => goToLine(defLine);
+        traceList.appendChild(li);
+    }
+
+    const uniqueLines = new Set();
+    refs.forEach(ref => {
+        const line = getLineNumber(ref.start);
+        if (def && line === getLineNumber(def.start)) return;
+        uniqueLines.add(line);
+    });
+
+    uniqueLines.forEach(line => {
+        const li = document.createElement('li');
+        li.className = 'trace-item';
+        li.textContent = `Reference: Line ${line}`;
+        li.onclick = () => goToLine(line);
+        traceList.appendChild(li);
+    });
+
+    tracePanel.classList.remove('hidden');
+    appContainer.classList.add('tracing-active');
+    
+    // Auto-scroll to definition if it exists
+    if (defLine) {
+        goToLine(defLine);
+    }
+}
+
+function getLineNumber(offset) {
+    return currentCode.substring(0, offset).split('\n').length;
+}
+
+function goToLine(line) {
+    const lineEl = document.getElementById(`line-${line}`);
+    if (lineEl) {
+        lineEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        lineEl.style.outline = '2px solid var(--accent-primary)';
+        setTimeout(() => {
+            lineEl.style.outline = 'none';
+        }, 2000);
+    }
+}
+
+closeTraceBtn.onclick = () => {
+    tracePanel.classList.add('hidden');
+    appContainer.classList.remove('tracing-active');
+};
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+init();

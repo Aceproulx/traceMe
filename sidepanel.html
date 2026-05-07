@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TraceMe - JS Analyzer</title>
+    <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <div class="logo">
+                <img src="icon.png" alt="TraceMe Logo" class="mini-logo">
+                <h1>TraceMe</h1>
+            </div>
+            <button id="refresh-btn" title="Refresh Scripts">
+                <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+            </button>
+        </header>
+
+        <section class="controls">
+            <div class="input-group">
+                <label for="sink-regex">Sinks Regex</label>
+                <input type="text" id="sink-regex" value="(innerHTML|outerHTML|document\.write|document\.writeln|eval|setTimeout|setInterval|new Function|execScript|insertAdjacentHTML|jQuery.*html| \$\.html|\.html\(|location =|href =|src =|window\.location|postMessage)">
+            </div>
+            <div class="input-group">
+                <label for="script-selector">Select Script</label>
+                <select id="script-selector">
+                    <option value="">No scripts loaded</option>
+                </select>
+            </div>
+        </section>
+
+        <section class="findings-panel">
+            <div class="panel-header">
+                <h2>Dangerous Sinks</h2>
+                <span id="sink-count" class="badge">0</span>
+            </div>
+            <ul id="sink-list">
+                <!-- Sinks will be listed here -->
+            </ul>
+        </section>
+
+        <section class="viewer-panel">
+            <div class="panel-header">
+                <h2 id="current-script-name">Code Viewer</h2>
+                <div class="viewer-actions">
+                    <button id="beautify-btn" class="secondary-btn" title="Beautify Minified Code">Format</button>
+                    <button id="find-def-btn" class="secondary-btn" title="Go to Definition">Def</button>
+                    <button id="find-refs-btn" class="secondary-btn" title="Find References">Refs</button>
+                </div>
+            </div>
+            <div class="code-container">
+                <pre id="code-viewer"><code>// Select a script to begin analysis...</code></pre>
+            </div>
+        </section>
+
+        <section class="trace-panel hidden" id="trace-panel">
+            <div class="panel-header">
+                <h2>Trace Results: <span id="trace-target"></span></h2>
+                <button id="close-trace" class="close-btn">&times;</button>
+            </div>
+            <ul id="trace-list"></ul>
+        </section>
+    </div>
+
+    <script src="lib/beautify.min.js"></script>
+    <script src="lib/acorn.js"></script>
+    <script src="lib/acorn-walk.js"></script>
+    <script src="sidepanel.js"></script>
+</body>
+</html>
