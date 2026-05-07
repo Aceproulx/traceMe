@@ -301,8 +301,8 @@ h2 {
     color: #000 !important;
     font-weight: bold;
     padding: 0 4px;
-    border-radius: 3px;
-    box-shadow: 0 0 10px var(--accent-primary);
+    border-radius: 2px;
+    box-shadow: 0 0 4px rgba(0, 242, 255, 0.5);
 }
 
 .tracing-active .controls,

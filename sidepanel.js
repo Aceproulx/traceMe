@@ -3,6 +3,7 @@ let currentScripts = [];
 let currentCode = '';
 let currentUrl = '';
 let ast = null;
+let lastState = { url: '', line: 0 };
 
 const sinkRegexInput = document.getElementById('sink-regex');
 const scriptSelector = document.getElementById('script-selector');
@@ -18,6 +19,8 @@ const closeTraceBtn = document.getElementById('close-trace');
 
 // Initialize
 async function init() {
+    const state = await chrome.storage.local.get(['lastUrl', 'lastLine']);
+    lastState = { url: state.lastUrl || '', line: state.lastLine || 0 };
     refreshScripts();
 }
 
@@ -70,27 +73,44 @@ function updateScriptSelector() {
         option.textContent = script.url.length > 50 ? '...' + script.url.slice(-47) : script.url;
         scriptSelector.appendChild(option);
     });
+
+    // Auto-select script
+    if (currentScripts.length > 0) {
+        const targetUrl = lastState.url || currentScripts[0].url;
+        const scriptToLoad = currentScripts.find(s => s.url === targetUrl) || currentScripts[0];
+        
+        if (!currentCode || (scriptToLoad && scriptToLoad.url !== currentUrl)) {
+            scriptSelector.value = scriptToLoad.id;
+            loadScript(scriptToLoad.id, lastState.line);
+            // Reset last line after first load
+            lastState.line = 0;
+        }
+    }
 }
 
-scriptSelector.addEventListener('change', async (e) => {
-    const scriptId = e.target.value;
-    if (!scriptId) return;
-
+async function loadScript(scriptId, targetLine = 0) {
     const script = currentScripts.find(s => s.id === scriptId);
     if (!script) return;
 
+    chrome.storage.local.set({ lastUrl: script.url });
+
     if (script.type === 'external') {
-        fetchAndDisplay(script.url);
+        fetchAndDisplay(script.url, targetLine);
     } else {
         currentCode = js_beautify(script.content, { 
             indent_size: 2,
             space_in_empty_paren: true 
         });
         displayCode(currentCode, 'Inline Script');
+        if (targetLine) goToLine(targetLine);
     }
+}
+
+scriptSelector.addEventListener('change', (e) => {
+    if (e.target.value) loadScript(e.target.value);
 });
 
-async function fetchAndDisplay(url) {
+async function fetchAndDisplay(url, targetLine = 0) {
     scriptNameDisplay.textContent = url.split('/').pop() || url;
     currentUrl = url;
     
@@ -108,6 +128,7 @@ async function fetchAndDisplay(url) {
             });
 
             displayCode(currentCode, url);
+            if (targetLine) goToLine(targetLine);
         });
     } catch (err) {
         codeViewer.textContent = `Error: ${err.message}`;
@@ -241,7 +262,7 @@ function renderSinks(sinks) {
             <span class="sink-line">Line ${sink.line}: ${escapeHtml(sink.content)}</span>
         `;
         li.onclick = () => {
-            clearHighlights();
+            clearLineHighlights();
             const lineEl = document.getElementById(`line-${sink.line}`);
             if (lineEl) {
                 lineEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -344,28 +365,34 @@ function getLineNumber(offset) {
     return currentCode.substring(0, offset).split('\n').length;
 }
 
-function clearHighlights() {
+function clearLineHighlights() {
     document.querySelectorAll('.active-line-trace, .active-line-sink').forEach(el => {
         el.classList.remove('active-line-trace', 'active-line-sink');
     });
+}
+
+function clearAllHighlights() {
+    clearLineHighlights();
     document.querySelectorAll('.traced-variable-highlight').forEach(el => {
         el.classList.remove('traced-variable-highlight');
     });
 }
 
 function goToLine(line) {
-    clearHighlights();
+    clearLineHighlights();
     const lineEl = document.getElementById(`line-${line}`);
     if (lineEl) {
         lineEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
         lineEl.classList.add('active-line-trace');
+        // Remember last line
+        chrome.storage.local.set({ lastLine: line });
     }
 }
 
 closeTraceBtn.onclick = () => {
     tracePanel.classList.add('hidden');
     appContainer.classList.remove('tracing-active');
-    clearHighlights();
+    clearAllHighlights();
 };
 
 function escapeHtml(text) {
