@@ -2,10 +2,26 @@
   "manifest_version": 3,
   "name": "TraceMe - Bug Bounty JS Tool",
   "version": "1.0",
-  "description": "Identify dangerous JS functions and trace variables for bug hunting.",
+  "description": "JavaScript static analyzer and variable tracer for bug bounty hunting.",
+  "icons": {
+    "16": "icon.png",
+    "32": "icon.png",
+    "48": "icon.png",
+    "128": "icon.png"
+  },
+  "action": {
+    "default_icon": {
+      "16": "icon.png",
+      "32": "icon.png",
+      "48": "icon.png",
+      "128": "icon.png"
+    },
+    "default_title": "Open TraceMe Side Panel"
+  },
   "permissions": [
     "sidePanel",
     "activeTab",
+    "tabs",
     "scripting",
     "storage"
   ],
@@ -18,16 +34,10 @@
   "side_panel": {
     "default_path": "sidepanel.html"
   },
-  "action": {
-    "default_title": "Open TraceMe Side Panel"
-  },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
       "js": ["content.js"]
     }
-  ],
-  "icons": {
-    "128": "icon.png"
-  }
+  ]
 }

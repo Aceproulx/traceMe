@@ -40,7 +40,7 @@ refreshBtn.addEventListener('click', refreshScripts);
 
 async function refreshScripts(retryCount = 0) {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab || !tab.id || tab.url.startsWith('chrome://')) {
+    if (!tab || !tab.id || !tab.url || tab.url.startsWith('chrome://')) {
         updateScriptSelector();
         return;
     }
