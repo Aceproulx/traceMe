@@ -99,18 +99,38 @@ label {
 }
 
 input, select {
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid var(--glass-border);
-    color: var(--text-main);
-    padding: 8px 12px;
-    border-radius: 6px;
-    font-size: 0.85rem;
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(0, 242, 255, 0.2);
+    color: var(--accent-primary);
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 0.9rem;
     outline: none;
-    transition: border-color 0.2s;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
+    font-family: var(--font-mono);
+}
+
+select {
+    appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--accent-primary) 50%),
+                      linear-gradient(135deg, var(--accent-primary) 50%, transparent 50%);
+    background-position: calc(100% - 20px) calc(1em + 2px),
+                         calc(100% - 15px) calc(1em + 2px);
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
 }
 
 input:focus, select:focus {
     border-color: var(--accent-primary);
+    box-shadow: 0 0 15px rgba(0, 242, 255, 0.3);
+    background: rgba(0, 242, 255, 0.05);
+}
+
+option {
+    background: var(--header-bg);
+    color: var(--text-main);
+    padding: 10px;
 }
 
 .findings-panel {

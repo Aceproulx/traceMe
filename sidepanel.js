@@ -62,16 +62,25 @@ async function refreshScripts(retryCount = 0) {
             currentUrl = response.url;
             currentScripts = response.scripts;
             updateScriptSelector();
+            
+            // Update extension badge
+            chrome.action.setBadgeText({ text: currentScripts.length.toString() });
+            chrome.action.setBadgeBackgroundColor({ color: '#7000ff' });
         }
     });
 }
 
 function updateScriptSelector() {
     scriptSelector.innerHTML = '<option value="">-- Select a Script --</option>';
-    currentScripts.forEach(script => {
+    currentScripts.forEach((script, index) => {
         const option = document.createElement('option');
         option.value = script.id;
-        option.textContent = script.url.length > 50 ? '...' + script.url.slice(-47) : script.url;
+        if (script.type === 'external') {
+            const fileName = script.url.split('/').pop() || script.url;
+            option.textContent = `JS: ${fileName}`;
+        } else {
+            option.textContent = `Inline Script #${index + 1}`;
+        }
         scriptSelector.appendChild(option);
     });
 
