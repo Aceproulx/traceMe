@@ -9,9 +9,8 @@ const scriptSelector = document.getElementById('script-selector');
 const sinkList = document.getElementById('sink-list');
 const sinkCountBadge = document.getElementById('sink-count');
 const codeViewer = document.getElementById('code-viewer');
-const currentScriptName = document.getElementById('current-script-name');
+const scriptNameDisplay = document.getElementById('script-name-display');
 const refreshBtn = document.getElementById('refresh-btn');
-const beautifyBtn = document.getElementById('beautify-btn');
 const tracePanel = document.getElementById('trace-panel');
 const traceList = document.getElementById('trace-list');
 const traceTarget = document.getElementById('trace-target');
@@ -81,33 +80,43 @@ scriptSelector.addEventListener('change', async (e) => {
     if (!script) return;
 
     if (script.type === 'external') {
-        currentScriptName.textContent = 'Fetching...';
-        chrome.runtime.sendMessage({ type: 'FETCH_EXTERNAL_SCRIPT', url: script.url }, (response) => {
-            if (response.error) {
-                currentScriptName.textContent = 'Error fetching script';
-                codeViewer.textContent = response.error;
-            } else {
-                displayCode(response.content, script.url);
-            }
-        });
+        fetchAndDisplay(script.url);
     } else {
-        displayCode(script.content, 'Inline Script');
+        currentCode = js_beautify(script.content, { 
+            indent_size: 2,
+            space_in_empty_paren: true 
+        });
+        displayCode(currentCode, 'Inline Script');
     }
 });
 
-beautifyBtn.addEventListener('click', () => {
-    if (!currentCode) return;
-    const beautified = js_beautify(currentCode, { 
-        indent_size: 2,
-        space_in_empty_paren: true,
-        preserve_newlines: true
-    });
-    displayCode(beautified, currentScriptName.textContent + ' (Formatted)');
-});
+async function fetchAndDisplay(url) {
+    scriptNameDisplay.textContent = url.split('/').pop() || url;
+    currentUrl = url;
+    
+    try {
+        chrome.runtime.sendMessage({ type: 'FETCH_EXTERNAL_SCRIPT', url }, (response) => {
+            if (response.error) {
+                codeViewer.textContent = `Error fetching script: ${response.error}`;
+                return;
+            }
+            
+            // Auto-beautify
+            currentCode = js_beautify(response.content, { 
+                indent_size: 2,
+                space_in_empty_paren: true 
+            });
+
+            displayCode(currentCode, url);
+        });
+    } catch (err) {
+        codeViewer.textContent = `Error: ${err.message}`;
+    }
+}
 
 function displayCode(code, name) {
     currentCode = code;
-    currentScriptName.textContent = name;
+    scriptNameDisplay.textContent = name;
     
     // Parse AST
     try {
@@ -232,13 +241,11 @@ function renderSinks(sinks) {
             <span class="sink-line">Line ${sink.line}: ${escapeHtml(sink.content)}</span>
         `;
         li.onclick = () => {
+            clearHighlights();
             const lineEl = document.getElementById(`line-${sink.line}`);
             if (lineEl) {
                 lineEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                lineEl.style.backgroundColor = 'rgba(255, 46, 99, 0.4)';
-                setTimeout(() => {
-                    lineEl.style.backgroundColor = '';
-                }, 2000);
+                lineEl.classList.add('active-line-sink');
             }
         };
         sinkList.appendChild(li);
@@ -310,30 +317,55 @@ function showTraceResults(word, def, refs) {
     tracePanel.classList.remove('hidden');
     appContainer.classList.add('tracing-active');
     
+    // Highlight all instances of this word in the viewer
+    highlightTracedWord(word);
+
     // Auto-scroll to definition if it exists
     if (defLine) {
         goToLine(defLine);
     }
 }
 
+function highlightTracedWord(word) {
+    // Clear any previous word highlights
+    document.querySelectorAll('.traced-variable-highlight').forEach(el => {
+        el.classList.remove('traced-variable-highlight');
+    });
+
+    // Find all spans containing exactly this word and highlight them
+    document.querySelectorAll('.clickable-variable').forEach(el => {
+        if (el.textContent === word) {
+            el.classList.add('traced-variable-highlight');
+        }
+    });
+}
+
 function getLineNumber(offset) {
     return currentCode.substring(0, offset).split('\n').length;
 }
 
+function clearHighlights() {
+    document.querySelectorAll('.active-line-trace, .active-line-sink').forEach(el => {
+        el.classList.remove('active-line-trace', 'active-line-sink');
+    });
+    document.querySelectorAll('.traced-variable-highlight').forEach(el => {
+        el.classList.remove('traced-variable-highlight');
+    });
+}
+
 function goToLine(line) {
+    clearHighlights();
     const lineEl = document.getElementById(`line-${line}`);
     if (lineEl) {
         lineEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        lineEl.style.outline = '2px solid var(--accent-primary)';
-        setTimeout(() => {
-            lineEl.style.outline = 'none';
-        }, 2000);
+        lineEl.classList.add('active-line-trace');
     }
 }
 
 closeTraceBtn.onclick = () => {
     tracePanel.classList.add('hidden');
     appContainer.classList.remove('tracing-active');
+    clearHighlights();
 };
 
 function escapeHtml(text) {
