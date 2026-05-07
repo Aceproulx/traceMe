@@ -128,7 +128,10 @@ function displayCode(code, name) {
 
 function renderCodeWithHighlights(code) {
     codeViewer.innerHTML = '';
-    const lines = code.split('\n');
+    
+    // Use Prism for syntax highlighting
+    const highlightedCode = Prism.highlight(code, Prism.languages.javascript, 'javascript');
+    const lines = highlightedCode.split('\n');
     const regex = new RegExp(sinkRegexInput.value, 'g');
 
     lines.forEach((line, index) => {
@@ -136,25 +139,67 @@ function renderCodeWithHighlights(code) {
         lineDiv.className = 'code-line';
         lineDiv.id = `line-${index + 1}`;
 
-        // Simple syntax highlighting for sinks
-        let highlightedLine = line.replace(/[a-zA-Z0-9_$]+/g, (match) => {
-            if (match.match(regex)) {
-                return `<span class="highlight-sink">${match}</span>`;
+        // Create a temporary element to hold the highlighted HTML
+        const temp = document.createElement('div');
+        temp.innerHTML = line || ' '; // Handle empty lines
+
+        // 1. First, identify and mark existing tokens
+        temp.querySelectorAll('.token').forEach(token => {
+            const text = token.textContent;
+            
+            // Highlight Sinks
+            if (text.match(regex)) {
+                token.classList.add('highlight-sink');
             }
-            return `<span class="variable" data-word="${match}">${match}</span>`;
+
+            // Exclude non-variable tokens
+            const isExcluded = token.classList.contains('keyword') || 
+                              token.classList.contains('string') || 
+                              token.classList.contains('comment') ||
+                              token.classList.contains('operator') ||
+                              token.classList.contains('punctuation');
+            
+            if (!isExcluded && !token.classList.contains('property')) {
+                token.classList.add('clickable-variable');
+            }
         });
 
-        lineDiv.innerHTML = highlightedLine;
+        // 2. Now, find text nodes (content not caught by Prism tokens) and wrap potential variables
+        const walker = document.createTreeWalker(temp, NodeFilter.SHOW_TEXT, null, false);
+        let textNode;
+        const nodesToReplace = [];
+        while (textNode = walker.nextNode()) {
+            if (textNode.parentElement.classList.contains('token')) continue;
+            nodesToReplace.push(textNode);
+        }
+
+        nodesToReplace.forEach(node => {
+            const text = node.nodeValue;
+            const newSpan = document.createElement('span');
+            // Wrap words in clickable spans
+            newSpan.innerHTML = text.replace(/[a-zA-Z0-9_$]+/g, (match) => {
+                if (match.match(regex)) {
+                    return `<span class="token highlight-sink">${match}</span>`;
+                }
+                // Check if it's a property (preceded by a dot in the raw text)
+                // This is hard to do here, so we'll just allow it for now to ensure "everything is clickable"
+                return `<span class="clickable-variable">${match}</span>`;
+            });
+            node.parentNode.replaceChild(newSpan, node);
+        });
+
+        lineDiv.innerHTML = temp.innerHTML;
         codeViewer.appendChild(lineDiv);
     });
-
-    // Add click events to variables
-    document.querySelectorAll('.variable').forEach(el => {
-        el.addEventListener('click', (e) => {
-            handleVariableClick(e.target.dataset.word, e.target);
-        });
-    });
 }
+
+// Global click delegation for variables
+codeViewer.addEventListener('click', (e) => {
+    const target = e.target.closest('.clickable-variable');
+    if (target) {
+        handleVariableClick(target.textContent, target);
+    }
+});
 
 function findSinks(code) {
     const regex = new RegExp(sinkRegexInput.value, 'g');
