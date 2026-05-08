@@ -18,10 +18,13 @@ const traceTarget = document.getElementById('trace-target');
 const liveValueEl = document.getElementById('live-value');
 const closeTraceBtn = document.getElementById('close-trace');
 
+let visitedScripts = [];
+
 // Initialize
 async function init() {
-    const state = await chrome.storage.local.get(['lastUrl', 'lastLine']);
+    const state = await chrome.storage.local.get(['lastUrl', 'lastLine', 'visitedScripts']);
     lastState = { url: state.lastUrl || '', line: state.lastLine || 0 };
+    visitedScripts = state.visitedScripts || [];
     refreshScripts();
 }
 
@@ -75,11 +78,14 @@ function updateScriptSelector() {
     currentScripts.forEach((script, index) => {
         const option = document.createElement('option');
         option.value = script.id;
+        const isVisited = visitedScripts.includes(script.url);
+        const prefix = isVisited ? '✓ ' : '';
+        
         if (script.type === 'external') {
             const fileName = script.url.split('/').pop() || script.url;
-            option.textContent = `JS: ${fileName}`;
+            option.textContent = `${prefix}JS: ${fileName}`;
         } else {
-            option.textContent = `Inline Script #${index + 1}`;
+            option.textContent = `${prefix}Inline Script #${index + 1}`;
         }
         scriptSelector.appendChild(option);
     });
@@ -103,6 +109,13 @@ async function loadScript(scriptId, targetLine = 0) {
     if (!script) return;
 
     chrome.storage.local.set({ lastUrl: script.url });
+    
+    if (!visitedScripts.includes(script.url)) {
+        visitedScripts.push(script.url);
+        chrome.storage.local.set({ visitedScripts });
+        updateScriptSelector(); // Refresh to show checkmark
+        scriptSelector.value = scriptId; // Restore selected value
+    }
 
     if (script.type === 'external') {
         fetchAndDisplay(script.url, targetLine);
@@ -465,6 +478,26 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// Resizer logic
+const resizer = document.getElementById('trace-resizer');
+resizer.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+});
+
+function handleMouseMove(e) {
+    const height = window.innerHeight - e.clientY;
+    if (height > 100 && height < window.innerHeight * 0.8) {
+        tracePanel.style.height = `${height}px`;
+    }
+}
+
+function handleMouseUp() {
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mouseup', handleMouseUp);
 }
 
 init();
