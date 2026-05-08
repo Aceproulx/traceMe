@@ -81,11 +81,26 @@ function updateScriptSelector() {
         const isVisited = visitedScripts.includes(script.url);
         const prefix = isVisited ? '✓ ' : '';
         
+        // Extract domain
+        let domain = 'Unknown';
+        try {
+            if (script.type === 'inline') {
+                // Use the page URL for inline scripts
+                const url = new URL(currentUrl);
+                domain = url.hostname;
+            } else {
+                const url = new URL(script.url);
+                domain = url.hostname;
+            }
+        } catch (e) {
+            domain = 'Local';
+        }
+
         if (script.type === 'external') {
             const fileName = script.url.split('/').pop() || script.url;
-            option.textContent = `${prefix}JS: ${fileName}`;
+            option.textContent = `${prefix}JS: ${fileName} (${domain})`;
         } else {
-            option.textContent = `${prefix}Inline Script #${index + 1}`;
+            option.textContent = `${prefix}Inline Script #${index + 1} (${domain})`;
         }
         scriptSelector.appendChild(option);
     });
