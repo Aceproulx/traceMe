@@ -1,5 +1,6 @@
 const appContainer = document.querySelector('.app-container');
 let currentScripts = [];
+let allScripts = [];
 let currentCode = '';
 let currentUrl = '';
 let ast = null;
@@ -41,6 +42,7 @@ chrome.tabs.onActivated.addListener(() => {
 });
 
 refreshBtn.addEventListener('click', refreshScripts);
+sinkRegexInput.addEventListener('input', filterScripts);
 
 async function refreshScripts(retryCount = 0) {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -49,28 +51,58 @@ async function refreshScripts(retryCount = 0) {
         return;
     }
 
-    chrome.tabs.sendMessage(tab.id, { type: 'GET_SCRIPTS' }, (response) => {
-        if (chrome.runtime.lastError) {
-            // Content script might not be ready yet, retry
-            if (retryCount < 5) {
-                console.log('Content script not ready, retrying...', retryCount);
-                setTimeout(() => refreshScripts(retryCount + 1), 500);
-            } else {
-                console.error('Failed to connect to content script after retries');
-                updateScriptSelector();
-            }
-            return;
-        }
+    try {
+        const response = await chrome.tabs.sendMessage(tab.id, { type: 'GET_SCRIPTS' });
         if (response) {
             currentUrl = response.url;
-            currentScripts = response.scripts;
-            updateScriptSelector();
             
-            // Update extension badge
-            chrome.action.setBadgeText({ text: currentScripts.length.toString() });
-            chrome.action.setBadgeBackgroundColor({ color: '#7000ff' });
+            scriptSelector.innerHTML = '<option value="">Loading & analyzing scripts...</option>';
+            
+            const scriptsWithContent = await Promise.all(response.scripts.map(async (script) => {
+                if (script.type === 'external') {
+                    try {
+                        const res = await chrome.runtime.sendMessage({ type: 'FETCH_EXTERNAL_SCRIPT', url: script.url });
+                        return { ...script, content: res.content || '' };
+                    } catch (e) {
+                        console.error('Failed to fetch', script.url, e);
+                        return { ...script, content: '' };
+                    }
+                }
+                return script;
+            }));
+            
+            allScripts = scriptsWithContent;
+            filterScripts();
         }
+    } catch (error) {
+        if (retryCount < 5) {
+            console.log('Content script not ready, retrying...', retryCount);
+            setTimeout(() => refreshScripts(retryCount + 1), 500);
+        } else {
+            console.error('Failed to connect to content script after retries', error);
+            updateScriptSelector();
+        }
+    }
+}
+
+function filterScripts() {
+    const regexValue = sinkRegexInput.value;
+    let regex;
+    try {
+        regex = new RegExp(regexValue);
+    } catch (e) {
+        console.error('Invalid regex', e);
+        return;
+    }
+
+    currentScripts = allScripts.filter(script => {
+        return regex.test(script.content);
     });
+
+    updateScriptSelector();
+    
+    chrome.action.setBadgeText({ text: currentScripts.length.toString() });
+    chrome.action.setBadgeBackgroundColor({ color: '#7000ff' });
 }
 
 function updateScriptSelector() {
@@ -132,46 +164,19 @@ async function loadScript(scriptId, targetLine = 0) {
         scriptSelector.value = scriptId; // Restore selected value
     }
 
-    if (script.type === 'external') {
-        fetchAndDisplay(script.url, targetLine);
-    } else {
-        currentCode = js_beautify(script.content, { 
-            indent_size: 2,
-            space_in_empty_paren: true 
-        });
-        displayCode(currentCode, 'Inline Script');
-        if (targetLine) goToLine(targetLine);
-    }
+    currentCode = js_beautify(script.content, { 
+        indent_size: 2,
+        space_in_empty_paren: true 
+    });
+    displayCode(currentCode, script.type === 'external' ? script.url : 'Inline Script');
+    if (targetLine) goToLine(targetLine);
 }
 
 scriptSelector.addEventListener('change', (e) => {
     if (e.target.value) loadScript(e.target.value);
 });
 
-async function fetchAndDisplay(url, targetLine = 0) {
-    scriptNameDisplay.textContent = url.split('/').pop() || url;
-    currentUrl = url;
-    
-    try {
-        chrome.runtime.sendMessage({ type: 'FETCH_EXTERNAL_SCRIPT', url }, (response) => {
-            if (response.error) {
-                codeViewer.textContent = `Error fetching script: ${response.error}`;
-                return;
-            }
-            
-            // Auto-beautify
-            currentCode = js_beautify(response.content, { 
-                indent_size: 2,
-                space_in_empty_paren: true 
-            });
-
-            displayCode(currentCode, url);
-            if (targetLine) goToLine(targetLine);
-        });
-    } catch (err) {
-        codeViewer.textContent = `Error: ${err.message}`;
-    }
-}
+// Removed fetchAndDisplay as content is now pre-fetched in refreshScripts
 
 function displayCode(code, name) {
     currentCode = code;
