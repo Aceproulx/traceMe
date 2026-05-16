@@ -259,7 +259,15 @@ function renderSinks(sinks) {
     const li = document.createElement('li');
     li.className = 'sink-item';
     li.innerHTML = `<span class="sink-func">${sink.func}</span><span class="sink-line">Line ${sink.line}: ${escapeHtml(sink.content)}</span>`;
-    li.onclick = () => { clearLineHighlights(); const el = $(`line-${sink.line}`); if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('active-line-sink'); } };
+    li.onclick = () => { 
+      viewerPanel.classList.remove('hidden');
+      clearLineHighlights(); 
+      const el = $(`line-${sink.line}`); 
+      if (el) { 
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' }); 
+        el.classList.add('active-line-sink'); 
+      } 
+    };
     sinkList.appendChild(li);
   });
 }
