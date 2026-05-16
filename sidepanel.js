@@ -260,13 +260,20 @@ function renderSinks(sinks) {
     li.className = 'sink-item';
     li.innerHTML = `<span class="sink-func">${sink.func}</span><span class="sink-line">Line ${sink.line}: ${escapeHtml(sink.content)}</span>`;
     li.onclick = () => { 
+      const wasHidden = viewerPanel.classList.contains('hidden');
       viewerPanel.classList.remove('hidden');
-      clearLineHighlights(); 
-      const el = $(`line-${sink.line}`); 
-      if (el) { 
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' }); 
-        el.classList.add('active-line-sink'); 
-      } 
+      
+      const scroll = () => {
+        clearLineHighlights(); 
+        const el = $(`line-${sink.line}`); 
+        if (el) { 
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' }); 
+          el.classList.add('active-line-sink'); 
+        }
+      };
+
+      if (wasHidden) setTimeout(scroll, 50);
+      else scroll();
     };
     sinkList.appendChild(li);
   });
@@ -467,7 +474,11 @@ function renderDirectiveSection(level, directives) {
       
       li.onclick = () => {
         highlightInPage(d);
-        if (d.lineEstimate) loadPageHtml(d.lineEstimate);
+        if (d.lineEstimate) {
+          const wasHidden = viewerPanel.classList.contains('hidden');
+          loadPageHtml(d.lineEstimate);
+          // loadPageHtml already calls goToLine which handles scrolling
+        }
       };
       list.appendChild(li);
     } else {
